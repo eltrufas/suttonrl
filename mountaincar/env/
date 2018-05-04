@@ -1,0 +1,100 @@
+package env
+
+import (
+	"math"
+	"math/rand"
+	"fmt"
+)
+
+type State interface{}
+type Action interface{}
+
+type MDPConstructor func() MDP
+
+type MDP interface {
+	GetState() State
+	LegalActions() []Action
+	Transition(Action) float64
+	Terminal() bool
+}
+
+type StateEncoder func(float64, float64) State
+
+func IdentityEncoder(x, dx float64) State {
+	return []float64{x, dx}
+}
+
+func CreateTileEncoder(nTilings, tilingRes int) StateEncoder {
+	tileW := 1.0 / float64(tilingRes)
+	offset := tileW / float64(nTilings)
+	tilesPerTiling := (tilingRes + 1) * (tilingRes + 1)
+	fmt.Println(tilesPerTiling)
+	var stride float64 = float64(tilingRes) + 1
+	return func(x, dx float64) State {
+		nx := (x + 1.2) / 1.7
+		ny := (dx + 0.07) / 0.14
+		s := make([]bool, tilesPerTiling * nTilings)
+		for i := 0; i < nTilings; i++ {
+			idx := tilesPerTiling * i + int((ny * stride + nx) * tileW)
+			fmt.Println(idx)
+			s[idx] = true
+
+			nx += offset
+			ny += offset
+		}
+		return s
+	}
+}
+
+type MountainCar struct {
+	x, dx   float64
+	Encoder StateEncoder
+}
+
+func (mc *MountainCar) GetRawState() (float64, float64) {
+	return mc.x, mc.dx
+}
+
+func (mc *MountainCar) GetState() State {
+	return mc.Encoder(mc.x, mc.dx)
+}
+
+func (mc *MountainCar) Transition(a Action) float64 {
+	direction := a.(float64)
+
+	mc.dx += 0.001*direction - 0.0025*math.Cos(3*mc.x)
+
+	if mc.dx < -0.07 {
+		mc.dx = -0.07
+	} else if mc.dx > 0.07 {
+		mc.dx = 0.07
+	}
+
+	mc.x += mc.dx
+	if mc.x <= -1.2 {
+		mc.x = -1.2
+		mc.dx = 0
+	}
+
+	if mc.x >= 0.5 {
+		return 0
+	} else {
+		return -1
+	}
+}
+
+func (mc *MountainCar) Terminal() bool {
+	return 0.5-mc.x < 1e-3
+}
+
+func (mc *MountainCar) LegalActions() []Action {
+	return []Action{-1, 0, 1}
+}
+
+func CreateMountainCar() MDP {
+	var mc MountainCar
+	mc.x = rand.Float64()*0.2 - 0.6
+	mc.Encoder = CreateTileEncoder(8, 8)
+
+	return &mc
+}
